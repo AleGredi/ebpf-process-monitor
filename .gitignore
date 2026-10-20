@@ -1,0 +1,9 @@
+# Compiled binaries
+/cmd/monitor/monitor
+/monitor
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~
