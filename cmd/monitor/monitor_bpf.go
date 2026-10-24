@@ -15,8 +15,9 @@ import (
 //
 // Used for safe lookups in a Collection or CollectionSpec.
 const (
-	monitorMapEvents      = "events"
-	monitorProgHandleExec = "handle_exec"
+	monitorMapEvents            = "events"
+	monitorProgHandleExec       = "handle_exec"
+	monitorProgHandleTcpConnect = "handle_tcp_connect"
 )
 
 // loadMonitor returns the embedded CollectionSpec for monitor.
@@ -61,7 +62,8 @@ type monitorSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type monitorProgramSpecs struct {
-	HandleExec *ebpf.ProgramSpec `ebpf:"handle_exec"`
+	HandleExec       *ebpf.ProgramSpec `ebpf:"handle_exec"`
+	HandleTcpConnect *ebpf.ProgramSpec `ebpf:"handle_tcp_connect"`
 }
 
 // monitorMapSpecs contains maps before they are loaded into the kernel.
@@ -116,12 +118,14 @@ type monitorVariables struct {
 //
 // It can be passed to loadMonitorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type monitorPrograms struct {
-	HandleExec *ebpf.Program `ebpf:"handle_exec"`
+	HandleExec       *ebpf.Program `ebpf:"handle_exec"`
+	HandleTcpConnect *ebpf.Program `ebpf:"handle_tcp_connect"`
 }
 
 func (p *monitorPrograms) Close() error {
 	return _MonitorClose(
 		p.HandleExec,
+		p.HandleTcpConnect,
 	)
 }
 

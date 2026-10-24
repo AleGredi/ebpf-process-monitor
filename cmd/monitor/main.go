@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,12 +16,23 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpf monitor ../../bpf/monitor.bpf.c -- -I../../bpf -I/usr/include
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpf monitor ../../bpf/monitor.bpf.c -- -I../../bpf -I/usr/include -D__TARGET_ARCH_x86
+
+const (                                                                                                         
+        EventTypeExec    uint32 = 0                                                                                 
+        EventTypeConnect uint32 = 1                                                                                 
+    )   
 
 // Event mirrors the C struct event layout received from the kernel ring buffer.
 type Event struct {
-	Pid  uint32
-	Comm [16]byte
+	Type  uint32
+	Pid   uint32
+	Uid   uint32
+	Ppid  uint32
+	Comm  [16]byte
+	Daddr uint32
+	Dport uint16
+	Pad   uint16
 }
 
 func main() {
@@ -45,6 +57,12 @@ func main() {
 	}
 	defer tp.Close()
 
+	kp, err := link.Kprobe("tcp_v4_connect", objs.HandleTcpConnect, nil)
+    if err != nil {
+        log.Fatalf("Failed to attach kprobe: %v", err)
+    }
+    defer kp.Close()
+
 	// Open the eBPF ring buffer reader for the 'events' map
 	rd, err := ringbuf.NewReader(objs.Events)
 	if err != nil {
@@ -61,7 +79,7 @@ func main() {
 		rd.Close()
 	}()
 
-	fmt.Println("🚀 Process monitor started! Listening for execution events...")
+	fmt.Println("🚀 Process monitor started! Listening for execution and network events...")
 	fmt.Println("Press Ctrl+C to stop.")
 	fmt.Println("----------------------------------------------------------------")
 
@@ -86,7 +104,14 @@ func main() {
 		// Strip trailing null bytes from the command string
 		commName := string(bytes.TrimRight(event.Comm[:], "\x00"))
 
-		// Display the intercepted event
-		fmt.Printf("[MONITOR] 🎯 Exec: PID: %-7d | COMM: %s\n", event.Pid, commName)
+		switch event.Type {
+		case EventTypeExec:
+			fmt.Printf("[MONITOR] 🎯 Exec: UID: %-5d | PID: %-7d | PPID: %-7d | COMM: %s\n", event.Uid, event.Pid, event.Ppid, commName)
+		case EventTypeConnect:
+			destIP := net.IPv4(byte(event.Daddr), byte(event.Daddr>>8), byte(event.Daddr>>16), byte(event.Daddr>>24))
+			destPort := (event.Dport>>8) | (event.Dport<<8)
+			fmt.Printf("[MONITOR] 🌐 Net:  UID: %-5d | PID: %-7d | COMM: %-15s -> %s:%d\n", event.Uid, event.Pid, commName, destIP, destPort)
+		}
+
 	}
 }
